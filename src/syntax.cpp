@@ -119,6 +119,20 @@ bool syntax::Assemble(std::vector<token>& tokenList, std::string BinaryFilePath,
             continue;
         }
 
+        if (instructionList[i].instruction == "integer")
+        {  
+            memoryBuff[startAddress] = instructionList[i].oprands[0].intData & 0xff;
+            memoryBuff[startAddress + 1] = (instructionList[i].oprands[0].intData & 0xff00) >> 8;
+            memoryBuff[startAddress + 2] = (instructionList[i].oprands[0].intData & 0xff0000) >> 16;
+            memoryBuff[startAddress + 3] = (instructionList[i].oprands[0].intData & 0xff000000) >> 24;
+            continue;
+        }
+
+        if (instructionList[i].instruction == "array")
+        {
+            continue;//because it's zero fill so just continue so that the memory block isn't processed
+        }
+
         if (!AssembleFromSyntaxBlock(instructionList[i], labelList, assembledBytes, error))
         {
             errorStream << error << "\n";
@@ -185,6 +199,20 @@ uint32_t syntax::mapSyntaxBlockToMemory(std::vector<syntaxBlock>& instructionLis
             memoryCounter += dataBlockSize;
             continue;
         }
+
+        if (instructionList[i].instruction == "integer")
+        {
+            instructionList[i].memoryAddress = memoryCounter;
+            memoryCounter+=0x4;
+            continue;
+        }
+
+        if (instructionList[i].instruction == "array")
+        {
+            instructionList[i].memoryAddress = memoryCounter;
+            memoryCounter+=instructionList[i].oprands[0].intData;
+            continue;
+        }
         
         if (memoryCounter % 0x10 != 0 && FORCE_INSTRUCTION_ALIGNMENT)
         {
@@ -218,6 +246,33 @@ bool syntax::checkValidInstructionToken(std::string instructionName, std::vector
             }
             return true;
         }
+
+        if (instructionName == "integer")
+        {
+            if (instructionIndex+1<tokenList.size())
+            {
+                if (tokenList[instructionIndex+1].dataT != token::dataType::integer && tokenList[instructionIndex+1].dataT != token::dataType::hex)
+                {
+                    return false;
+                }
+                syntaxObj.instruction = instructionName;
+                syntaxObj.oprands.push_back(tokenList[instructionIndex+1]);
+                return true;
+            }
+            return false;
+        }
+
+        if (instructionName == "array")
+        {
+            if (instructionIndex+1 < tokenList.size() && (tokenList[instructionIndex+1].dataT == token::dataType::integer || tokenList[instructionIndex+1].dataT == token::dataType::hex))
+            {
+                syntaxObj.instruction = instructionName;
+                syntaxObj.oprands.push_back(tokenList[instructionIndex+1]);
+                return true;
+            }
+            return false;
+        }
+
         //std::cout << instructionList[i].first << "\n";
         if (instructionName == INSTRUCTION_LIST[i].first)
         {
