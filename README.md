@@ -10,7 +10,7 @@
   
 </ul>
 
-start:&#80;
+start&#80;
     #setting up the stack
     mov sp 0
     mov bp 0x250
