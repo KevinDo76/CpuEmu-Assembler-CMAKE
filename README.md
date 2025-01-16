@@ -9,3 +9,41 @@
   <li>A way to create arrays</li>
   
 </ul>
+
+<code>
+start:
+    #setting up the stack
+    mov sp 0
+    mov bp 0x250
+
+    #start
+    mov ra message
+    call print
+
+    halt
+
+# address of the message in ra
+print:
+    pushreg
+.print_loop:
+    mov cmpreg 0
+    mov rc 0
+
+    readptr1 rb ra
+    out rb 0
+
+    cmp rb rb rc
+    mov rc .print_done
+    jmpif rb rc
+
+    inc ra
+    jmpimm .print_loop
+
+.print_done:
+    popreg
+    ret
+
+
+message:
+    string "Hello World!" 10 0
+</code>
