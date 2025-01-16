@@ -10,8 +10,7 @@
   
 </ul>
 
-<p>
-start:
+start:&#80;
     #setting up the stack
     mov sp 0
     mov bp 0x250
@@ -46,4 +45,3 @@ print:
 
 message:
     string "Hello World!" 10 0
-</p>
