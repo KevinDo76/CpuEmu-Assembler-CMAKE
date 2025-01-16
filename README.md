@@ -10,7 +10,7 @@
   
 </ul>
 
-<code>
+<p>
 start:
     #setting up the stack
     mov sp 0
@@ -46,4 +46,4 @@ print:
 
 message:
     string "Hello World!" 10 0
-</code>
+</p>
