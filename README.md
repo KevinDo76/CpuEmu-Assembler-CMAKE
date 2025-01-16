@@ -9,8 +9,8 @@
   <li>A way to create arrays</li>
   
 </ul>
-
-start&#80;
+```
+start:
     #setting up the stack
     mov sp 0
     mov bp 0x250
@@ -45,3 +45,4 @@ print:
 
 message:
     string "Hello World!" 10 0
+```
