@@ -80,6 +80,9 @@ bool syntax::Assemble(std::vector<token>& tokenList, std::string BinaryFilePath,
     registerLabel.instruction = "bp";
     registerLabel.memoryAddress = 0x6;
     labelList.push_back(registerLabel);
+    registerLabel.instruction = "rf";
+    registerLabel.memoryAddress = 0x7;
+    labelList.push_back(registerLabel);
 
     for (int i = 0; i < instructionList.size(); i++)
     {
@@ -231,7 +234,7 @@ uint32_t syntax::mapSyntaxBlockToMemory(std::vector<syntaxBlock>& instructionLis
 
 bool syntax::checkValidInstructionToken(std::string instructionName, std::vector<token>& tokenList, unsigned int& instructionIndex, syntaxBlock& syntaxObj)
 {
-    const std::pair<std::string, unsigned int> INSTRUCTION_LIST[] = { {"mov",2}, {"out",2}, {"add", 2}, {"and", 2}, {"xor", 2}, {"sub", 2}, {"or", 2}, {"readptr1", 2}, {"jmpimm", 1},{"jmpif",2}, {"cmp",3}, {"halt",0}, {"ret",0}, {"call", 1}, {"push", 1}, {"pop", 1}, {"inc", 1}, {"dec", 1}, {"pushreg", 0}, {"popreg", 0} };
+    const std::pair<std::string, unsigned int> INSTRUCTION_LIST[] = { {"mov",2}, {"out",2}, {"add", 2}, {"and", 2}, {"xor", 2}, {"sub", 2}, {"or", 2}, {"readptr1", 2}, {"jmpimm", 1},{"jmpif",1}, {"cmp",2}, {"halt",0}, {"ret",0}, {"call", 1}, {"push", 1}, {"pop", 1}, {"inc", 1}, {"dec", 1}, {"pushreg", 0}, {"popreg", 0}, {"writeimm4", 2}, {"writeimm2", 2}, {"writeimm1", 2}};
 
     for (int i = 0; i < sizeof INSTRUCTION_LIST / sizeof INSTRUCTION_LIST[0]; i++)
     {
@@ -302,6 +305,9 @@ uint32_t syntax::getInstructionCodeFromName(std::string name)
     if (name == "dec") { return 0x25; }
     if (name == "pushreg") { return 0x26; }
     if (name == "popreg") { return 0x27; }
+    if (name == "writeimm4") { return 0x0b; }
+    if (name == "writeimm2") { return 0x0c; }
+    if (name == "writeimm1") { return 0x0d; }
 
     return 0;
 }

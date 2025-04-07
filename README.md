@@ -27,25 +27,24 @@ start:
 
 # address of the message in ra
 print:
-    pushreg
+	pushreg
 .print_loop:
-    mov cmpreg 0
-    mov rc 0
+	mov cmpreg 0
+	mov rc 0
 
-    readptr1 rb ra
-    out rb 0
+	readptr1 rb ra
+	out rb 0
 
-    cmp rb rb rc
-    mov rc .print_done
-    jmpif rb rc
+	cmp rb rc
+	mov rc .print_done
+	jmpif rc
 
-    inc ra
-    jmpimm .print_loop
+	inc ra
+	jmpimm .print_loop
 
 .print_done:
-    popreg
-    ret
-
+	popreg
+	ret
 
 message:
     string "Hello World!" 10 0
