@@ -9,6 +9,7 @@ bool syntax::Assemble(std::vector<token>& tokenList, std::string BinaryFilePath,
 {
     std::vector<syntaxBlock> instructionList;
     std::vector<syntaxBlock> labelList;
+    std::string mainLabelBlock;
     bool errorFound = false;
 
     for (unsigned int i = 0; i < tokenList.size(); i++)
@@ -17,6 +18,7 @@ bool syntax::Assemble(std::vector<token>& tokenList, std::string BinaryFilePath,
         {
             syntaxBlock instructionBlock;
             std::string error;
+            instructionBlock.mainLabelBlock=mainLabelBlock;
             if (!createInstructionSyntaxBlock(instructionBlock, tokenList, i, error))
             {
                 errorStream << error << "\n";
@@ -25,17 +27,58 @@ bool syntax::Assemble(std::vector<token>& tokenList, std::string BinaryFilePath,
             }
             instructionList.push_back(instructionBlock);
         }
+        
+        if (tokenList[i].type == token::tokenType::directive)
+        {
+            bool oprandError = false;
+
+            if (tokenList[i].stringData=="%ORG")
+            {
+                if (i+1<tokenList.size() && (tokenList[i+1].dataT == token::dataType::integer || tokenList[i+1].dataT == token::dataType::hex))
+                {
+                    BINARY_ORIGIN = tokenList[i+1].intData;
+                }
+                else
+                {
+                    oprandError = true;
+                }
+            }
+            if (oprandError)
+            {
+                errorStream << "Invalid directive parameter on line "<<tokenList[i].lineNumber<<"\n";
+                return false;
+            }
+        }
 
         if (tokenList[i].type == token::tokenType::label)
         {
             syntaxBlock labelBlock;
             labelBlock.isLabel = true;
+            bool isSubLabel = false;
             for (int j = 0; j < tokenList[i].stringData.size(); j++)
             {
+                if (tokenList[i].stringData[j] == '.' && j == 0)
+                {
+                    isSubLabel = true;
+                    labelBlock.instruction += mainLabelBlock;
+                }
                 if (tokenList[i].stringData[j] != ':')
                 {
                     labelBlock.instruction += tokenList[i].stringData[j];
                 }
+                if (!((tokenList[i].stringData[j] >= 48 && tokenList[i].stringData[j] <= 58) ||
+                    (tokenList[i].stringData[j] >= 65 && tokenList[i].stringData[j] <= 90) ||
+                    (tokenList[i].stringData[j] == 95) ||
+                    (tokenList[i].stringData[j] >= 97 && tokenList[i].stringData[j] <= 122)||
+                    (tokenList[i].stringData[j] == 46))) 
+                {
+                    errorStream << "Invalid character for labels on line "<< tokenList[i].lineNumber<< ". Character: \"" << tokenList[i].stringData[j] << "\"" <<"\n";
+                    return false;
+                }
+            }
+            if (!isSubLabel)
+            {
+                mainLabelBlock = labelBlock.instruction;
             }
             instructionList.push_back(labelBlock);
         }
@@ -46,7 +89,7 @@ bool syntax::Assemble(std::vector<token>& tokenList, std::string BinaryFilePath,
         return false;
     }
 
-    uint32_t memorySize = mapSyntaxBlockToMemory(instructionList);
+    uint32_t memorySize = mapSyntaxBlockToMemory(instructionList, BINARY_ORIGIN);
     char* memoryBuff = new char[memorySize] {0};
     for (int i = 0; i < instructionList.size(); i++)
     {
@@ -174,9 +217,9 @@ bool syntax::Assemble(std::vector<token>& tokenList, std::string BinaryFilePath,
     return true;
 }
 
-uint32_t syntax::mapSyntaxBlockToMemory(std::vector<syntaxBlock>& instructionList)
+uint32_t syntax::mapSyntaxBlockToMemory(std::vector<syntaxBlock>& instructionList, uint32_t startAddress)
 {
-    uint32_t memoryCounter = 0;
+    uint32_t memoryCounter = startAddress;
     for (int i = 0; i < instructionList.size(); i++)
     {
 
@@ -234,7 +277,29 @@ uint32_t syntax::mapSyntaxBlockToMemory(std::vector<syntaxBlock>& instructionLis
 
 bool syntax::checkValidInstructionToken(std::string instructionName, std::vector<token>& tokenList, unsigned int& instructionIndex, syntaxBlock& syntaxObj)
 {
-    const std::pair<std::string, unsigned int> INSTRUCTION_LIST[] = { {"mov",2}, {"out",2}, {"add", 2}, {"and", 2}, {"xor", 2}, {"sub", 2}, {"or", 2}, {"readptr1", 2}, {"jmpimm", 1},{"jmpif",1}, {"cmp",2}, {"halt",0}, {"ret",0}, {"call", 1}, {"push", 1}, {"pop", 1}, {"inc", 1}, {"dec", 1}, {"pushreg", 0}, {"popreg", 0}, {"writeimm4", 2}, {"writeimm2", 2}, {"writeimm1", 2}};
+    const std::pair<std::string, unsigned int> INSTRUCTION_LIST[] ={{"mov",2}, 
+                                                                    {"out",2}, 
+                                                                    {"add", 2}, 
+                                                                    {"and", 2}, 
+                                                                    {"xor", 2}, 
+                                                                    {"sub", 2}, 
+                                                                    {"or", 2}, 
+                                                                    {"readptr1", 2}, 
+                                                                    {"jmpimm", 1},
+                                                                    {"jmpif",1}, 
+                                                                    {"cmp",2}, 
+                                                                    {"halt",0}, 
+                                                                    {"ret",0}, 
+                                                                    {"call", 1}, 
+                                                                    {"push", 1}, 
+                                                                    {"pop", 1}, 
+                                                                    {"inc", 1}, 
+                                                                    {"dec", 1}, 
+                                                                    {"pushreg", 0}, 
+                                                                    {"popreg", 0}, 
+                                                                    {"writeimm4", 2}, 
+                                                                    {"writeimm2", 2}, 
+                                                                    {"writeimm1", 2}};
 
     for (int i = 0; i < sizeof INSTRUCTION_LIST / sizeof INSTRUCTION_LIST[0]; i++)
     {
@@ -331,12 +396,13 @@ bool syntax::AssembleFromSyntaxBlock(syntaxBlock& syntaxObj, std::vector<syntaxB
             bool found = false;
             for (int labelIndex = 0; labelIndex < labelList.size(); labelIndex++)
             {
-                if (labelList[labelIndex].instruction != syntaxObj.oprands[i].stringData)
+                if ((labelList[labelIndex].instruction == (syntaxObj.mainLabelBlock+syntaxObj.oprands[i].stringData)) || 
+                    (labelList[labelIndex].instruction == syntaxObj.oprands[i].stringData))
                 {
-                    continue;
+                    found = true;
+                    assembledBytes[i+1] = (labelList[labelIndex].memoryAddress);
+                    break;
                 }
-                found = true;
-                assembledBytes[i+1] = (labelList[labelIndex].memoryAddress);
             }
             if (!found)
             {

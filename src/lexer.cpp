@@ -149,6 +149,13 @@ bool lexer::convertToken(unsigned int lineNumber, unsigned int wordIndex, bool i
 	{
 		return false;
 	}
+	if (word[0] == '%')
+	{
+		returnToken.type = token::tokenType::directive;
+		returnToken.dataT = token::dataType::string;
+		returnToken.stringData = word;
+		return true;
+	}
 	if (word[word.size() - 1] == ':')
 	{
 		returnToken.type = token::tokenType::label;

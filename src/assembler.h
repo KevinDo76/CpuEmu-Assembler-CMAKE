@@ -4,6 +4,10 @@
 #include <string>
 #include <array>
 #include <sstream>
+
+//externs for global configs
+extern uint32_t BINARY_ORIGIN;
+
 class token
 {
 public:
@@ -13,6 +17,7 @@ public:
 		inlineLabel,
 		oprand,
 		stringChunk,
+		directive
 	};
 
 	enum dataType {
@@ -35,6 +40,7 @@ class syntaxBlock
 public:
 	uint32_t lineNumber;
 	bool isLabel;
+	std::string mainLabelBlock;
 	std::string instruction;
 	std::vector<token> oprands;
 	uint32_t memoryAddress;	
@@ -43,7 +49,7 @@ public:
 namespace syntax {
 	uint32_t getInstructionCodeFromName(std::string);
 	bool AssembleFromSyntaxBlock(syntaxBlock& syntaxObj, std::vector<syntaxBlock>& labelList, std::array<uint32_t, 4>& assembledBytes, std::string& error);
-	uint32_t mapSyntaxBlockToMemory(std::vector<syntaxBlock>& instructionList);
+	uint32_t mapSyntaxBlockToMemory(std::vector<syntaxBlock>& instructionList, uint32_t startAddress);
 	bool checkValidInstructionToken(std::string instructionName, std::vector<token>& tokenList, unsigned int& instructionIndex, syntaxBlock& syntaxObj);
 	bool createInstructionSyntaxBlock(syntaxBlock& syntaxObj, std::vector<token>& tokenList, unsigned int& instructionIndex, std::string& error);
 	bool checkOprand(std::vector<token>, unsigned int instructionIndex, unsigned int oprandCount, syntaxBlock& syntaxObj);
