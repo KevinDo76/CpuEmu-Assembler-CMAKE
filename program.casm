@@ -30,7 +30,7 @@ start:
 	mov ra 0
 	mov cmpreg ge
 	.loop2:
-		mov rb 100
+		mov rb 1000
 		call print_uint32
 	
 		push ra
@@ -45,7 +45,7 @@ start:
 		jmpimm .loop2
 	
 	.program_end:
-		#jmpimm .loop_start_2
+		jmpimm .loop_start_2
 		halt
 
 # print number, number in ra

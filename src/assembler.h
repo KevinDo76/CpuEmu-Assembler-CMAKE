@@ -72,3 +72,7 @@ namespace lexer {
 	char hex2char(char n);
 	uint32_t hex2int(std::string n);
 }
+
+namespace assembler {
+	bool assembledFile(std::string pathIn, std::string pathOut, std::string& error);
+}
