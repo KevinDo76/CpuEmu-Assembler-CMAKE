@@ -5,6 +5,7 @@
 #include <sstream>
 #include <fstream>
 #include "assembler.h"
+#include <unordered_map>
 
 token::token()
 	: type((tokenType)0), dataT((dataType)0), stringData(""), intData(0), lineNumber(0)
@@ -100,6 +101,8 @@ bool lexer::lexcialAnalyzer(std::vector<token>& tokenList, std::pair<unsigned in
 	bool textChunk = false;
 	bool textChunkEnded = false;
 	unsigned int wordIndex = 0;
+	bool errorFound = false;
+	std::stringstream errorMessage;
 	for (int i=0;i<line.second.size();i++)
 	{
 		if (line.second[i] == '"')
@@ -114,9 +117,15 @@ bool lexer::lexcialAnalyzer(std::vector<token>& tokenList, std::pair<unsigned in
 		if (line.second[i] == ' ' && !textChunk)
 		{
 			token Token;
-			if (convertToken(line.first, wordIndex, textChunkEnded, currentIngest, Token))
+			if (convertToken(line.first, wordIndex, textChunkEnded, currentIngest, Token, errorFound, errorMessage))
 			{
 				tokenList.push_back(Token);
+			}
+
+			if (errorFound)
+			{
+				error = errorMessage.str();
+				return false;
 			}
 			textChunkEnded = false;
 			wordIndex++;
@@ -132,17 +141,16 @@ bool lexer::lexcialAnalyzer(std::vector<token>& tokenList, std::pair<unsigned in
 		}
 		currentIngest += line.second[i];
 	}
-
 	token Token;
-	if (convertToken(line.first, wordIndex, textChunkEnded, currentIngest, Token))
+	if (convertToken(line.first, wordIndex, textChunkEnded, currentIngest, Token, errorFound, errorMessage))
 	{
 		tokenList.push_back(Token);
 	}
-	error = "none";
-	return true;
+	error = errorMessage.str();
+	return !errorFound;
 }
 
-bool lexer::convertToken(unsigned int lineNumber, unsigned int wordIndex, bool inTextChunk, std::string word, token& returnToken)
+bool lexer::convertToken(unsigned int lineNumber, unsigned int wordIndex, bool inTextChunk, std::string word, token& returnToken, bool& errorFound, std::stringstream& errorMessage)
 {
 	returnToken.lineNumber = lineNumber;
 	if (word.size() == 0)

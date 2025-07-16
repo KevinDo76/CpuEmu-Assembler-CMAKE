@@ -55,7 +55,7 @@ namespace syntax {
 	bool checkOprand(std::vector<token>, unsigned int instructionIndex, unsigned int oprandCount, syntaxBlock& syntaxObj);
 	void toLowerCase(std::string& word);
 	uint32_t flipEndian(uint32_t n);
-
+	void registerBuiltinLabels(std::vector<syntaxBlock>& labelList);
 	bool Assemble(std::vector<token>& tokenList, std::string BinaryFilePath, std::stringstream& error);
 }
 
@@ -67,7 +67,7 @@ namespace lexer {
 	void trimEndString(std::string& toTrim);
 	void removeComment(std::string& toRemove);
 	bool lexcialAnalyzer(std::vector<token>& tokenList, std::pair<unsigned int, std::string>line, std::string& error);
-	bool convertToken(unsigned int lineNumber, unsigned int wordIndex, bool inTextChunk, std::string word, token& returnToken);
+	bool convertToken(unsigned int lineNumber, unsigned int wordIndex, bool inTextChunk, std::string word, token& returnToken, bool& errorFound, std::stringstream& errorMessage);
 	void santizeHex(std::string& word);
 	char hex2char(char n);
 	uint32_t hex2int(std::string n);

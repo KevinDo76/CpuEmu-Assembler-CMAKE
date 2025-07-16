@@ -2,6 +2,7 @@
 #include <iostream>
 #include <fstream>
 #include <sstream>
+#include <unordered_map>
 
 #define FORCE_INSTRUCTION_ALIGNMENT 0
 
@@ -54,6 +55,7 @@ bool syntax::Assemble(std::vector<token>& tokenList, std::string BinaryFilePath,
         {
             syntaxBlock labelBlock;
             labelBlock.isLabel = true;
+            labelBlock.lineNumber = tokenList[i].lineNumber;
             bool isSubLabel = false;
             for (int j = 0; j < tokenList[i].stringData.size(); j++)
             {
@@ -90,42 +92,26 @@ bool syntax::Assemble(std::vector<token>& tokenList, std::string BinaryFilePath,
     }
 
     uint32_t memorySize = mapSyntaxBlockToMemory(instructionList, BINARY_ORIGIN);
+    std::unordered_map<std::string, bool> existingLabel;
     char* memoryBuff = new char[memorySize] {0};
     for (int i = 0; i < instructionList.size(); i++)
     {
         if (instructionList[i].isLabel)
         {
+            if (existingLabel.find(instructionList[i].instruction)!=existingLabel.end())
+            {
+                errorStream<<"duplicate label "<<instructionList[i].instruction<<", on line " << instructionList[i].lineNumber <<"\n";
+                return false;
+            }
+            existingLabel[instructionList[i].instruction] = true;
+            
             labelList.push_back(instructionList[i]);
+            std::cout<<instructionList[i].instruction<<"\n";
         }
     }
 
     //creating label entries for registers
-    syntaxBlock registerLabel;
-    registerLabel.instruction = "ra";
-    registerLabel.isLabel = true;
-    registerLabel.memoryAddress = 0x0;
-    labelList.push_back(registerLabel);
-    registerLabel.instruction = "rb";
-    registerLabel.memoryAddress = 0x1;
-    labelList.push_back(registerLabel);
-    registerLabel.instruction = "rc";
-    registerLabel.memoryAddress = 0x2;
-    labelList.push_back(registerLabel);
-    registerLabel.instruction = "rd";
-    registerLabel.memoryAddress = 0x3;
-    labelList.push_back(registerLabel);
-    registerLabel.instruction = "cmpreg";
-    registerLabel.memoryAddress = 0x4;
-    labelList.push_back(registerLabel);
-    registerLabel.instruction = "sp";
-    registerLabel.memoryAddress = 0x5;
-    labelList.push_back(registerLabel);
-    registerLabel.instruction = "bp";
-    registerLabel.memoryAddress = 0x6;
-    labelList.push_back(registerLabel);
-    registerLabel.instruction = "rf";
-    registerLabel.memoryAddress = 0x7;
-    labelList.push_back(registerLabel);
+    registerBuiltinLabels(labelList);
 
     for (int i = 0; i < instructionList.size(); i++)
     {
@@ -299,7 +285,11 @@ bool syntax::checkValidInstructionToken(std::string instructionName, std::vector
                                                                     {"popreg", 0}, 
                                                                     {"writeimm4", 2}, 
                                                                     {"writeimm2", 2}, 
-                                                                    {"writeimm1", 2}};
+                                                                    {"writeimm1", 2},
+                                                                    {"div", 3},
+                                                                    {"clhi", 0},
+                                                                    {"sthi", 0}, 
+                                                                    {"hiret", 0}};
 
     for (int i = 0; i < sizeof INSTRUCTION_LIST / sizeof INSTRUCTION_LIST[0]; i++)
     {
@@ -373,6 +363,10 @@ uint32_t syntax::getInstructionCodeFromName(std::string name)
     if (name == "writeimm4") { return 0x0b; }
     if (name == "writeimm2") { return 0x0c; }
     if (name == "writeimm1") { return 0x0d; }
+    if (name == "div") { return 0x12; }
+    if (name == "clhi") { return 0x31;}
+    if (name == "sthi") { return 0x32;}
+    if (name == "hiret") { return 0x33;}
 
     return 0;
 }
@@ -470,6 +464,61 @@ bool syntax::checkOprand(std::vector<token>tokenList, unsigned int instructionIn
 uint32_t syntax::flipEndian(uint32_t n)
 {
     return (n << 24) | ((n << 8) & 0x00ff0000) | ((n >> 8) & 0x0000ff00) | ((n >> 8) & 0x0000ff00) | ((n >> 24) & 0x000000ff);
+}
+
+void syntax::registerBuiltinLabels(std::vector<syntaxBlock> &labelList)
+{
+    syntaxBlock registerLabel;
+    registerLabel.instruction = "ra";
+    registerLabel.isLabel = true;
+    registerLabel.memoryAddress = 0x0;
+    labelList.push_back(registerLabel);
+
+    registerLabel.instruction = "rb";
+    registerLabel.memoryAddress = 0x1;
+    labelList.push_back(registerLabel);
+
+    registerLabel.instruction = "rc";
+    registerLabel.memoryAddress = 0x2;
+    labelList.push_back(registerLabel);
+
+    registerLabel.instruction = "rd";
+    registerLabel.memoryAddress = 0x3;
+    labelList.push_back(registerLabel);
+    
+    registerLabel.instruction = "cmpreg";
+    registerLabel.memoryAddress = 0x4;
+    labelList.push_back(registerLabel);
+    registerLabel.instruction = "sp";
+    registerLabel.memoryAddress = 0x5;
+    labelList.push_back(registerLabel);
+    registerLabel.instruction = "bp";
+    registerLabel.memoryAddress = 0x6;
+    labelList.push_back(registerLabel);
+    registerLabel.instruction = "rf";
+    registerLabel.memoryAddress = 0x7;
+    labelList.push_back(registerLabel);
+    registerLabel.instruction = "eq";
+    registerLabel.memoryAddress = 0x0;
+    labelList.push_back(registerLabel);
+    registerLabel.instruction = "ne";
+    registerLabel.memoryAddress = 0x1;
+    labelList.push_back(registerLabel);
+    registerLabel.instruction = "lt";
+    registerLabel.memoryAddress = 0x2;
+    labelList.push_back(registerLabel);
+    registerLabel.instruction = "gt";
+    registerLabel.memoryAddress = 0x3;
+    labelList.push_back(registerLabel);
+    registerLabel.instruction = "le";
+    registerLabel.memoryAddress = 0x4;
+    labelList.push_back(registerLabel);
+    registerLabel.instruction = "ge";
+    registerLabel.memoryAddress = 0x5;
+    labelList.push_back(registerLabel);
+    registerLabel.instruction = "hireg";
+    registerLabel.memoryAddress = 0x8;
+    labelList.push_back(registerLabel);
 }
 
 void syntax::toLowerCase(std::string& word)

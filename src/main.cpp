@@ -27,7 +27,7 @@ int main()
 		if (!lexer::lexcialAnalyzer(tokenList, AsmCleanStringBuff[i], error))
 		{
 			std::cout << error << "\n";
-			std::cout << "Failed to tokenize, exiting\n";
+			std::cout << "Failed to tokenize, exiting with message: \n" << error;
 			return 1;
 		}
 	}
