@@ -1,0 +1,121 @@
+%SECTION TEXT
+jmpimm start
+
+interruptHandler:
+	pushreg
+	mov ra message
+	call print
+	popreg
+	halt
+	hiret
+
+start:
+	mov hireg interruptHandler
+	mov ra 0x1
+	mov rb 0x2
+	sub ra rb
+	#setting up the stack
+
+	mov ra 0xffffffff
+	mov rb 0x1
+	add ra rb
+
+	mov sp 0
+	mov bp 0x3000
+
+	.loop_start_2:
+
+	#start
+	sthi
+
+	mov ra 0
+	mov cmpreg ge
+	.loop2:
+		mov rb 1000
+		call print_uint32
+	
+		push ra
+		mov ra breakline
+		call print
+		pop ra
+
+		cmp ra rb
+		mov rb .program_end
+		jmpif rb
+		inc ra
+		jmpimm .loop2
+	
+	.program_end:
+		jmpimm .loop_start_2
+		halt
+
+# print number, number in ra
+print_uint32:
+	clhi
+	pushreg
+	mov rb 10
+	mov rd 0
+	mov cmpreg ne
+	.loop:
+		div ra rb rc # divide ra by rb and store remainder in rc
+		push rc # push the remainder
+
+		mov rc 0   #check to see if ra is zero after operation
+		cmp ra rc
+
+		inc rd
+
+		mov rc .loop
+		jmpif rc
+
+	mov cmpreg ne
+	.print_out:
+		dec rd
+
+		pop ra
+		mov rc 48
+		add ra rc
+		out ra 0
+
+		mov ra 0
+		cmp ra rd
+		mov rc .print_out
+		jmpif rc
+
+	.done:
+		popreg
+		sthi
+		ret
+
+
+
+		
+
+# address of the message in ra
+print:
+	clhi
+	pushreg
+	.loop:
+		mov cmpreg eq
+		mov rc 0
+
+		readptr1 rb ra
+		out rb 0
+
+		cmp rb rc
+		mov rc .done
+		jmpif rc
+
+		inc ra
+		jmpimm .loop
+
+	.done:
+		popreg
+		sthi
+		ret
+
+%SECTION DATA
+breakline:
+	string 10 0
+message:
+	string "Hello World!" 0

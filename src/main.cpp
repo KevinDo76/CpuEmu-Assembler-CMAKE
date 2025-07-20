@@ -7,10 +7,13 @@
 
 int main()
 {
-	std::string assemblyFilePath = "program.casm";
+	std::vector<std::string> assemblyPathList;
+	assemblyPathList.push_back("program.casm");
+	assemblyPathList.push_back("bios.casm");
+
 	std::string binaryOutputFilePath = "./program.bin";
 
 	std::string errorList;
-	assembler::assembledFile(assemblyFilePath, binaryOutputFilePath, errorList);
+	assembler::assembledFile(assemblyPathList, binaryOutputFilePath, errorList);
 	return 0;
 }

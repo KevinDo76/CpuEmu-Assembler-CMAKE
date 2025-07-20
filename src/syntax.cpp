@@ -3,186 +3,275 @@
 #include <fstream>
 #include <sstream>
 #include <unordered_map>
-
+#include <unordered_set>
 #define FORCE_INSTRUCTION_ALIGNMENT 0
 
-bool syntax::Assemble(std::vector<token>& tokenList, std::string BinaryFilePath, std::stringstream& errorStream)
+bool syntax::Assemble(std::vector<std::vector<token>>& tokenList, std::string BinaryFilePath, std::stringstream& errorStream)
 {
-    std::vector<syntaxBlock> instructionList;
+    std::vector<std::vector<syntaxBlock>> instructionList(tokenList.size());
+    std::vector<std::unordered_set<std::string>> declaredLabels(tokenList.size());
+    std::unordered_set<std::string> exportedLabelList;
+    std::vector<std::unordered_set<std::string>> externalLabelList(tokenList.size());
+    std::unordered_map<std::string, uint32_t> labelMemoryMap;
     std::vector<syntaxBlock> labelList;
-    std::string mainLabelBlock;
     bool errorFound = false;
-
-    for (unsigned int i = 0; i < tokenList.size(); i++)
+    
+    for (uint32_t currentTokenListIndex = 0; currentTokenListIndex < tokenList.size();currentTokenListIndex++)
     {
-        if (tokenList[i].type == token::tokenType::instruction)
+        std::string mainLabelBlock;
+        std::string currentSection = "TEXT";
+        std::unordered_set<std::string> currentFileExportList;
+        for (unsigned int i = 0; i < tokenList[currentTokenListIndex].size(); i++)
         {
-            syntaxBlock instructionBlock;
+            if (tokenList[currentTokenListIndex][i].type == token::tokenType::instruction)
+            {
+
+                syntaxBlock instructionBlock;
+                std::string error;
+                instructionBlock.mainLabelBlock=mainLabelBlock;
+                instructionBlock.dataSection = currentSection;
+                instructionBlock.isExternal = false;
+                instructionBlock.isLabel = false;
+                instructionBlock.filePath = tokenList[currentTokenListIndex][i].filePath;
+                if (!createInstructionSyntaxBlock(instructionBlock, tokenList[currentTokenListIndex], i, error))
+                {
+                    errorStream << error << "\n";
+                    errorFound = true;
+                    continue;
+                }
+                instructionList[currentTokenListIndex].push_back(instructionBlock);
+            }
+            
+            if (tokenList[currentTokenListIndex][i].type == token::tokenType::directive)
+            {
+                bool oprandError = false;
+                bool directiveFound = false;
+                if (tokenList[currentTokenListIndex][i].stringData=="%GLOBAL")
+                {
+                    directiveFound = true;
+                    if (i+1<tokenList[currentTokenListIndex].size() && (tokenList[currentTokenListIndex][i+1].dataT == token::dataType::string))
+                    {
+                        exportedLabelList.insert(tokenList[currentTokenListIndex][i+1].stringData);
+                        currentFileExportList.insert(tokenList[currentTokenListIndex][i+1].stringData);
+                    }
+                    else
+                    {
+                        oprandError = true;
+                    }
+                }
+
+                if (tokenList[currentTokenListIndex][i].stringData=="%EXTERN")
+                {
+                    directiveFound = true;
+                    if (i+1<tokenList[currentTokenListIndex].size() && (tokenList[currentTokenListIndex][i+1].dataT == token::dataType::string))
+                    {
+                        externalLabelList[currentTokenListIndex].insert(tokenList[currentTokenListIndex][i+1].stringData);
+                    }
+                    else
+                    {
+                        oprandError = true;
+                    }
+                }
+                if (tokenList[currentTokenListIndex][i].stringData=="%ORG")
+                {
+                    directiveFound = true;
+                    if (i+1<tokenList[currentTokenListIndex].size() && (tokenList[currentTokenListIndex][i+1].dataT == token::dataType::integer || tokenList[currentTokenListIndex][i+1].dataT == token::dataType::hex))
+                    {
+                        BINARY_ORIGIN = tokenList[currentTokenListIndex][i+1].intData;
+                    }
+                    else
+                    {
+                        oprandError = true;
+                    }
+                }
+                if (tokenList[currentTokenListIndex][i].stringData=="%SECTION")
+                {
+                    directiveFound = true;
+                    if (i+1<tokenList[currentTokenListIndex].size() && tokenList[currentTokenListIndex][i+1].dataT == token::dataType::string)
+                    {
+                        currentSection = tokenList[currentTokenListIndex][i+1].stringData;
+                    }
+                }
+                if (!directiveFound)
+                {
+                    errorStream << "Invalid directive "<<tokenList[currentTokenListIndex][i].stringData<<" on line " <<tokenList[currentTokenListIndex][i].lineNumber<<"\n";
+                }
+                if (oprandError)
+                {
+                    errorStream << "Invalid directive parameter on line "<<tokenList[currentTokenListIndex][i].lineNumber<<"\n";
+                }
+                if (oprandError || !directiveFound)
+                {
+                    return false;
+                }
+            }
+
+            if (tokenList[currentTokenListIndex][i].type == token::tokenType::label)
+            {
+                syntaxBlock labelBlock;
+                labelBlock.isLabel = true;
+                labelBlock.isExternal = false;
+                labelBlock.lineNumber = tokenList[currentTokenListIndex][i].lineNumber;
+                labelBlock.dataSection = currentSection;
+                labelBlock.filePath = tokenList[currentTokenListIndex][i].filePath;
+                bool isSubLabel = false;
+                for (int j = 0; j < tokenList[currentTokenListIndex][i].stringData.size(); j++)
+                {
+                    if (tokenList[currentTokenListIndex][i].stringData[j] == '.' && j == 0)
+                    {
+                        isSubLabel = true;
+                        labelBlock.instruction += mainLabelBlock;
+                    }
+                    if (tokenList[currentTokenListIndex][i].stringData[j] != ':')
+                    {
+                        labelBlock.instruction += tokenList[currentTokenListIndex][i].stringData[j];
+                    }
+                    if (!((tokenList[currentTokenListIndex][i].stringData[j] >= 48 && tokenList[currentTokenListIndex][i].stringData[j] <= 58) ||
+                        (tokenList[currentTokenListIndex][i].stringData[j] >= 65 && tokenList[currentTokenListIndex][i].stringData[j] <= 90) ||
+                        (tokenList[currentTokenListIndex][i].stringData[j] == 95) ||
+                        (tokenList[currentTokenListIndex][i].stringData[j] >= 97 && tokenList[currentTokenListIndex][i].stringData[j] <= 122)||
+                        (tokenList[currentTokenListIndex][i].stringData[j] == 46))) 
+                    {
+                        errorStream << "Invalid character for labels on line "<< tokenList[currentTokenListIndex][i].lineNumber<< ". Character: \"" << tokenList[currentTokenListIndex][i].stringData[j] << "\"" <<"\n";
+                        return false;
+                    }
+                }
+                if (!isSubLabel)
+                {
+                    mainLabelBlock = labelBlock.instruction;
+                }
+                declaredLabels[currentTokenListIndex].insert(labelBlock.instruction);
+                instructionList[currentTokenListIndex].push_back(labelBlock);
+            }
+        }
+
+        for (const std::string& externLabel : currentFileExportList) {
+            if (declaredLabels[currentTokenListIndex].find(externLabel) == declaredLabels[currentTokenListIndex].end())
+            {
+                errorStream << "Attempted to export an undefined label \"" << externLabel << "\" in " << tokenList[currentTokenListIndex][0].filePath << "\n";
+                return false;
+            }
+        }
+
+        if (errorFound)
+        {
+            return false;
+        }
+    }
+
+
+
+    std::vector<syntaxBlock> unifiedInstructionList;
+    for (int i=0;i<instructionList.size();i++)
+    {
+        unifiedInstructionList.insert(unifiedInstructionList.end(), instructionList[i].begin(), instructionList[i].end());
+    }
+
+    uint32_t memorySize = 0;
+    std::stringstream memoryMapErrorStream;
+    if (!mapSyntaxBlockToMemory(instructionList, BINARY_ORIGIN, memorySize, memoryMapErrorStream))
+    {
+        errorStream << memoryMapErrorStream.str();
+        return false;
+    }
+
+    std::unordered_set<std::string> existingLabel;
+    char* memoryBuff = new char[memorySize] {0};
+
+    for (uint32_t currentInstructionIndex = 0; currentInstructionIndex < tokenList.size();currentInstructionIndex++)
+    {
+        for (int i = 0; i < instructionList[currentInstructionIndex].size(); i++)
+        {
+            if (instructionList[currentInstructionIndex][i].isLabel)
+            {
+                if (existingLabel.find(instructionList[currentInstructionIndex][i].instruction)!=existingLabel.end())
+                {
+                    errorStream<<"duplicate label "<<instructionList[currentInstructionIndex][i].instruction<<", on line " << instructionList[currentInstructionIndex][i].lineNumber << " " + instructionList[currentInstructionIndex][i].filePath + "\n";
+                    return false;
+                }
+                existingLabel.insert(instructionList[currentInstructionIndex][i].instruction);
+
+                labelMemoryMap[instructionList[currentInstructionIndex][i].instruction] = instructionList[currentInstructionIndex][i].memoryAddress;
+                labelList.push_back(instructionList[currentInstructionIndex][i]);
+                std::cout<<instructionList[currentInstructionIndex][i].instruction<<"\n";
+            }
+        }
+    }
+    //creating label entries for registers
+    registerBuiltinLabels(labelList, declaredLabels, labelMemoryMap);
+
+
+    for (uint32_t currentInstructionIndex = 0; currentInstructionIndex < tokenList.size();currentInstructionIndex++) {
+        for (int i = 0; i < instructionList[currentInstructionIndex].size(); i++)
+        {
             std::string error;
-            instructionBlock.mainLabelBlock=mainLabelBlock;
-            if (!createInstructionSyntaxBlock(instructionBlock, tokenList, i, error))
+            std::array<uint32_t, 4>assembledBytes = { 0 };
+            uint32_t startAddress = instructionList[currentInstructionIndex][i].memoryAddress;
+
+            if (instructionList[currentInstructionIndex][i].isLabel)
+            {
+                continue;
+            }
+
+            if (instructionList[currentInstructionIndex][i].instruction == "string")
+            {
+                uint32_t offset = 0;
+                for (int oprandIndex = 0; oprandIndex < instructionList[currentInstructionIndex][i].oprands.size(); oprandIndex++)
+                {
+                    if (instructionList[currentInstructionIndex][i].oprands[oprandIndex].type == token::tokenType::stringChunk)
+                    {
+                        for (int stringIndex = 0; stringIndex < instructionList[currentInstructionIndex][i].oprands[oprandIndex].stringData.size(); stringIndex++)
+                        {
+                            memoryBuff[startAddress + offset] = instructionList[currentInstructionIndex][i].oprands[oprandIndex].stringData[stringIndex];
+                            offset++;
+                        }
+                    }  
+                    if (instructionList[currentInstructionIndex][i].oprands[oprandIndex].dataT == token::dataType::hex) 
+                    {
+                        memoryBuff[startAddress + offset] = (char)instructionList[currentInstructionIndex][i].oprands[oprandIndex].intData;
+                        offset++;
+                    }
+                    if (instructionList[currentInstructionIndex][i].oprands[oprandIndex].dataT == token::dataType::integer)
+                    {
+                        memoryBuff[startAddress + offset] = (char)instructionList[currentInstructionIndex][i].oprands[oprandIndex].intData;
+                        offset++;
+                    }
+                }
+                continue;
+            }
+
+            if (instructionList[currentInstructionIndex][i].instruction == "integer")
+            {  
+                memoryBuff[startAddress] = instructionList[currentInstructionIndex][i].oprands[0].intData & 0xff;
+                memoryBuff[startAddress + 1] = (instructionList[currentInstructionIndex][i].oprands[0].intData & 0xff00) >> 8;
+                memoryBuff[startAddress + 2] = (instructionList[currentInstructionIndex][i].oprands[0].intData & 0xff0000) >> 16;
+                memoryBuff[startAddress + 3] = (instructionList[currentInstructionIndex][i].oprands[0].intData & 0xff000000) >> 24;
+                continue;
+            }
+
+            if (instructionList[currentInstructionIndex][i].instruction == "array")
+            {
+                continue;//because it's zero fill so just continue so that the memory block isn't processed
+            }
+
+            if (!AssembleFromSyntaxBlock(currentInstructionIndex, declaredLabels, exportedLabelList, externalLabelList, instructionList[currentInstructionIndex][i], labelMemoryMap, assembledBytes, error))
             {
                 errorStream << error << "\n";
                 errorFound = true;
                 continue;
             }
-            instructionList.push_back(instructionBlock);
-        }
-        
-        if (tokenList[i].type == token::tokenType::directive)
-        {
-            bool oprandError = false;
-
-            if (tokenList[i].stringData=="%ORG")
-            {
-                if (i+1<tokenList.size() && (tokenList[i+1].dataT == token::dataType::integer || tokenList[i+1].dataT == token::dataType::hex))
-                {
-                    BINARY_ORIGIN = tokenList[i+1].intData;
-                }
-                else
-                {
-                    oprandError = true;
-                }
-            }
-            if (oprandError)
-            {
-                errorStream << "Invalid directive parameter on line "<<tokenList[i].lineNumber<<"\n";
-                return false;
-            }
-        }
-
-        if (tokenList[i].type == token::tokenType::label)
-        {
-            syntaxBlock labelBlock;
-            labelBlock.isLabel = true;
-            labelBlock.lineNumber = tokenList[i].lineNumber;
-            bool isSubLabel = false;
-            for (int j = 0; j < tokenList[i].stringData.size(); j++)
-            {
-                if (tokenList[i].stringData[j] == '.' && j == 0)
-                {
-                    isSubLabel = true;
-                    labelBlock.instruction += mainLabelBlock;
-                }
-                if (tokenList[i].stringData[j] != ':')
-                {
-                    labelBlock.instruction += tokenList[i].stringData[j];
-                }
-                if (!((tokenList[i].stringData[j] >= 48 && tokenList[i].stringData[j] <= 58) ||
-                    (tokenList[i].stringData[j] >= 65 && tokenList[i].stringData[j] <= 90) ||
-                    (tokenList[i].stringData[j] == 95) ||
-                    (tokenList[i].stringData[j] >= 97 && tokenList[i].stringData[j] <= 122)||
-                    (tokenList[i].stringData[j] == 46))) 
-                {
-                    errorStream << "Invalid character for labels on line "<< tokenList[i].lineNumber<< ". Character: \"" << tokenList[i].stringData[j] << "\"" <<"\n";
-                    return false;
-                }
-            }
-            if (!isSubLabel)
-            {
-                mainLabelBlock = labelBlock.instruction;
-            }
-            instructionList.push_back(labelBlock);
-        }
-    }
-
-    if (errorFound)
-    {
-        return false;
-    }
-
-    uint32_t memorySize = mapSyntaxBlockToMemory(instructionList, BINARY_ORIGIN);
-    std::unordered_map<std::string, bool> existingLabel;
-    char* memoryBuff = new char[memorySize] {0};
-    for (int i = 0; i < instructionList.size(); i++)
-    {
-        if (instructionList[i].isLabel)
-        {
-            if (existingLabel.find(instructionList[i].instruction)!=existingLabel.end())
-            {
-                errorStream<<"duplicate label "<<instructionList[i].instruction<<", on line " << instructionList[i].lineNumber <<"\n";
-                return false;
-            }
-            existingLabel[instructionList[i].instruction] = true;
             
-            labelList.push_back(instructionList[i]);
-            std::cout<<instructionList[i].instruction<<"\n";
-        }
-    }
-
-    //creating label entries for registers
-    registerBuiltinLabels(labelList);
-
-    for (int i = 0; i < instructionList.size(); i++)
-    {
-        std::string error;
-        std::array<uint32_t, 4>assembledBytes = { 0 };
-        uint32_t startAddress = instructionList[i].memoryAddress;
-
-        if (instructionList[i].isLabel)
-        {
-            continue;
-        }
-
-        if (instructionList[i].instruction == "string")
-        {
-            uint32_t offset = 0;
-            for (int oprandIndex = 0; oprandIndex < instructionList[i].oprands.size(); oprandIndex++)
+            for (int j = 0; j < 4; j++)
             {
-                if (instructionList[i].oprands[oprandIndex].type == token::tokenType::stringChunk)
-                {
-                    for (int stringIndex = 0; stringIndex < instructionList[i].oprands[oprandIndex].stringData.size(); stringIndex++)
-                    {
-                        memoryBuff[startAddress + offset] = instructionList[i].oprands[oprandIndex].stringData[stringIndex];
-                        offset++;
-                    }
-                }  
-                if (instructionList[i].oprands[oprandIndex].dataT == token::dataType::hex) 
-                {
-                    memoryBuff[startAddress + offset] = (char)instructionList[i].oprands[oprandIndex].intData;
-                    offset++;
-                }
-                if (instructionList[i].oprands[oprandIndex].dataT == token::dataType::integer)
-                {
-                    memoryBuff[startAddress + offset] = (char)instructionList[i].oprands[oprandIndex].intData;
-                    offset++;
-                }
+                
+                //((uint32_t* )memoryBuff)[(startAddress/4) + j] = assembledBytes[j];
+                memoryBuff[startAddress + j * 0x04 + 0] = assembledBytes[j] & 0xff;
+                memoryBuff[startAddress + j * 0x04 + 1] = (assembledBytes[j] & 0xff00) >> 8;
+                memoryBuff[startAddress + j * 0x04 + 2] = (assembledBytes[j] & 0xff0000) >> 16;
+                memoryBuff[startAddress + j * 0x04 + 3] = (assembledBytes[j] & 0xff000000) >> 24;
             }
-            continue;
-        }
-
-        if (instructionList[i].instruction == "integer")
-        {  
-            memoryBuff[startAddress] = instructionList[i].oprands[0].intData & 0xff;
-            memoryBuff[startAddress + 1] = (instructionList[i].oprands[0].intData & 0xff00) >> 8;
-            memoryBuff[startAddress + 2] = (instructionList[i].oprands[0].intData & 0xff0000) >> 16;
-            memoryBuff[startAddress + 3] = (instructionList[i].oprands[0].intData & 0xff000000) >> 24;
-            continue;
-        }
-
-        if (instructionList[i].instruction == "array")
-        {
-            continue;//because it's zero fill so just continue so that the memory block isn't processed
-        }
-
-        if (!AssembleFromSyntaxBlock(instructionList[i], labelList, assembledBytes, error))
-        {
-            errorStream << error << "\n";
-            errorFound = true;
-            continue;
-        }
-        
-        for (int j = 0; j < 4; j++)
-        {
-            
-            //((uint32_t* )memoryBuff)[(startAddress/4) + j] = assembledBytes[j];
-            memoryBuff[startAddress + j * 0x04 + 0] = assembledBytes[j] & 0xff;
-            memoryBuff[startAddress + j * 0x04 + 1] = (assembledBytes[j] & 0xff00) >> 8;
-            memoryBuff[startAddress + j * 0x04 + 2] = (assembledBytes[j] & 0xff0000) >> 16;
-            memoryBuff[startAddress + j * 0x04 + 3] = (assembledBytes[j] & 0xff000000) >> 24;
         }
     }
-
     if (errorFound)
     {
         return false;
@@ -203,62 +292,98 @@ bool syntax::Assemble(std::vector<token>& tokenList, std::string BinaryFilePath,
     return true;
 }
 
-uint32_t syntax::mapSyntaxBlockToMemory(std::vector<syntaxBlock>& instructionList, uint32_t startAddress)
+int32_t getElementIndex(std::string name, std::vector<std::string>& vectorList)
 {
-    uint32_t memoryCounter = startAddress;
-    for (int i = 0; i < instructionList.size(); i++)
+    for (int i = 0;i< vectorList.size(); i++) 
     {
-
-        if (instructionList[i].instruction == "string")
+        if (vectorList[i] == name)
         {
-            instructionList[i].memoryAddress = memoryCounter;
-            uint32_t dataBlockSize = 0;
-            for (int oprandsIndex = 0; oprandsIndex < instructionList[i].oprands.size(); oprandsIndex++)
-            {
-                if (instructionList[i].oprands[oprandsIndex].dataT == token::dataType::string)
-                {
-                    dataBlockSize += instructionList[i].oprands[oprandsIndex].stringData.size();
-                }
-                if (instructionList[i].oprands[oprandsIndex].dataT == token::dataType::hex)
-                {
-                    dataBlockSize++;
-                }
-                if (instructionList[i].oprands[oprandsIndex].dataT == token::dataType::integer)
-                {
-                    dataBlockSize++;
-                }
-            }
-            memoryCounter += dataBlockSize;
-            continue;
+            return i;
         }
-
-        if (instructionList[i].instruction == "integer")
-        {
-            instructionList[i].memoryAddress = memoryCounter;
-            memoryCounter+=0x4;
-            continue;
-        }
-
-        if (instructionList[i].instruction == "array")
-        {
-            instructionList[i].memoryAddress = memoryCounter;
-            memoryCounter+=instructionList[i].oprands[0].intData;
-            continue;
-        }
-        
-        if (memoryCounter % 0x10 != 0 && FORCE_INSTRUCTION_ALIGNMENT)
-        {
-            memoryCounter = memoryCounter - (memoryCounter % 0x10) + 0x10;
-        }
-        instructionList[i].memoryAddress = memoryCounter;
-
-        if (!instructionList[i].isLabel)
-        {
-            memoryCounter += 0x10;
-        }
-
     }
-    return memoryCounter;
+    return -1;
+}
+
+bool syntax::mapSyntaxBlockToMemory(std::vector<std::vector<syntaxBlock>>& instructionLists, uint32_t startAddress, uint32_t& returnMemorySize, std::stringstream& errorStream)
+{
+    std::vector<std::string> validSectionAndPrority = {"TEXT", "DATA"};
+    std::vector<uint32_t> sectorMemoryOffset(validSectionAndPrority.size());
+
+    for (int instructionListIndex = 0; instructionListIndex < instructionLists.size(); instructionListIndex++)
+    {
+        for (int i = 0; i < instructionLists[instructionListIndex].size(); i++) 
+        {
+            int32_t memoryBankIndex = getElementIndex(instructionLists[instructionListIndex][i].dataSection, validSectionAndPrority);
+            if (memoryBankIndex==-1)
+            {
+                errorStream << "Invalid section "<<instructionLists[instructionListIndex][i].dataSection<<"\n";
+                return false;
+            }
+            
+            if (instructionLists[instructionListIndex][i].instruction == "string")
+            {
+                instructionLists[instructionListIndex][i].memoryAddress = sectorMemoryOffset[memoryBankIndex];
+                uint32_t dataBlockSize = 0;
+                for (int oprandsIndex = 0; oprandsIndex < instructionLists[instructionListIndex][i].oprands.size(); oprandsIndex++)
+                {
+                    if (instructionLists[instructionListIndex][i].oprands[oprandsIndex].dataT == token::dataType::string)
+                    {
+                        dataBlockSize += instructionLists[instructionListIndex][i].oprands[oprandsIndex].stringData.size();
+                    }
+                    if (instructionLists[instructionListIndex][i].oprands[oprandsIndex].dataT == token::dataType::hex)
+                    {
+                        dataBlockSize++;
+                    }
+                    if (instructionLists[instructionListIndex][i].oprands[oprandsIndex].dataT == token::dataType::integer)
+                    {
+                        dataBlockSize++;
+                    }
+                }
+                sectorMemoryOffset[memoryBankIndex] += dataBlockSize;
+                continue;
+            }
+
+            if (instructionLists[instructionListIndex][i].instruction == "integer")
+            {
+                instructionLists[instructionListIndex][i].memoryAddress = sectorMemoryOffset[memoryBankIndex];
+                sectorMemoryOffset[memoryBankIndex]+=0x4;
+                continue;
+            }
+
+            if (instructionLists[instructionListIndex][i].instruction == "array")
+            {
+                instructionLists[instructionListIndex][i].memoryAddress = sectorMemoryOffset[memoryBankIndex];
+                sectorMemoryOffset[memoryBankIndex]+=instructionLists[instructionListIndex][i].oprands[0].intData;
+                continue;
+            }
+
+            instructionLists[instructionListIndex][i].memoryAddress = sectorMemoryOffset[memoryBankIndex];
+
+            if (!instructionLists[instructionListIndex][i].isLabel)
+            {
+                sectorMemoryOffset[memoryBankIndex] += 0x10;
+            }
+        }
+    
+    }
+
+    for (int instructionListIndex = 0; instructionListIndex < instructionLists.size(); instructionListIndex++) {
+        for (int i=0;i < instructionLists[instructionListIndex].size(); i++)
+        {
+            int32_t memoryBankIndex = getElementIndex(instructionLists[instructionListIndex][i].dataSection, validSectionAndPrority);
+            if (memoryBankIndex == 0)
+            {
+                continue;
+            }
+            instructionLists[instructionListIndex][i].memoryAddress += sectorMemoryOffset[memoryBankIndex-1] + startAddress;
+        }
+    }
+
+    for (int i=0;i<validSectionAndPrority.size();i++)
+    {
+        returnMemorySize += sectorMemoryOffset[i];
+    }
+    return true;
 }
 
 bool syntax::checkValidInstructionToken(std::string instructionName, std::vector<token>& tokenList, unsigned int& instructionIndex, syntaxBlock& syntaxObj)
@@ -331,7 +456,6 @@ bool syntax::checkValidInstructionToken(std::string instructionName, std::vector
             return false;
         }
 
-        //std::cout << instructionList[i].first << "\n";
         if (instructionName == INSTRUCTION_LIST[i].first)
         {
             syntaxObj.instruction = instructionName;
@@ -371,7 +495,7 @@ uint32_t syntax::getInstructionCodeFromName(std::string name)
     return 0;
 }
 
-bool syntax::AssembleFromSyntaxBlock(syntaxBlock& syntaxObj, std::vector<syntaxBlock>& labelList, std::array<uint32_t, 4>& assembledBytes, std::string& error)
+bool syntax::AssembleFromSyntaxBlock(uint32_t currentInstructionIndex, std::vector<std::unordered_set<std::string>>& declaredLabels, std::unordered_set<std::string>& exportedLabelList, std::vector<std::unordered_set<std::string>>& externalLabelList, syntaxBlock& syntaxObj, std::unordered_map<std::string, uint32_t>& labelMemoryMap, std::array<uint32_t, 4>& assembledBytes, std::string& error)
 {
     if (syntaxObj.oprands.size() > 3)
     {
@@ -388,22 +512,46 @@ bool syntax::AssembleFromSyntaxBlock(syntaxBlock& syntaxObj, std::vector<syntaxB
         if (syntaxObj.oprands[i].type == token::tokenType::inlineLabel)
         {
             bool found = false;
-            for (int labelIndex = 0; labelIndex < labelList.size(); labelIndex++)
+            std::string fullLabelName;
+            
+            if (declaredLabels[currentInstructionIndex].find(syntaxObj.mainLabelBlock+syntaxObj.oprands[i].stringData) != declaredLabels[currentInstructionIndex].end())
             {
-                if ((labelList[labelIndex].instruction == (syntaxObj.mainLabelBlock+syntaxObj.oprands[i].stringData)) || 
-                    (labelList[labelIndex].instruction == syntaxObj.oprands[i].stringData))
-                {
-                    found = true;
-                    assembledBytes[i+1] = (labelList[labelIndex].memoryAddress);
-                    break;
-                }
+                found = true;
+                fullLabelName = syntaxObj.mainLabelBlock+syntaxObj.oprands[i].stringData;
+            } 
+            else if (declaredLabels[currentInstructionIndex].find(syntaxObj.oprands[i].stringData) != declaredLabels[currentInstructionIndex].end())
+            {
+                found = true;
+                fullLabelName = syntaxObj.oprands[i].stringData;
+            } else if (exportedLabelList.find(syntaxObj.oprands[i].stringData) != exportedLabelList.end() && externalLabelList[currentInstructionIndex].find(syntaxObj.oprands[i].stringData) != externalLabelList[currentInstructionIndex].end())
+            {
+                found = true;
+                fullLabelName = syntaxObj.oprands[i].stringData;
             }
+
+
+            //for (int labelIndex = 0; labelIndex < labelList.size(); labelIndex++)
+            //{
+            //    if ((labelList[labelIndex].instruction == (syntaxObj.mainLabelBlock+syntaxObj.oprands[i].stringData)) || 
+            //        (labelList[labelIndex].instruction == syntaxObj.oprands[i].stringData))
+            //    {
+            //        found = true;
+            //        assembledBytes[i+1] = (labelList[labelIndex].memoryAddress);
+            //        break;
+            //    }
+            //}
+
+
             if (!found)
             {
                 std::stringstream returnError;
-                returnError << "Unknown label, \"" + syntaxObj.oprands[i].stringData + "\", on line " << syntaxObj.lineNumber;
+                returnError << "Unknown label, \"" + syntaxObj.oprands[i].stringData + "\", on line " << syntaxObj.lineNumber << " " + syntaxObj.filePath;
                 error = returnError.str();
                 return false;
+            }
+            else 
+            {
+                assembledBytes[i+1] = labelMemoryMap[fullLabelName];
             }
             continue;
         }
@@ -466,59 +614,39 @@ uint32_t syntax::flipEndian(uint32_t n)
     return (n << 24) | ((n << 8) & 0x00ff0000) | ((n >> 8) & 0x0000ff00) | ((n >> 8) & 0x0000ff00) | ((n >> 24) & 0x000000ff);
 }
 
-void syntax::registerBuiltinLabels(std::vector<syntaxBlock> &labelList)
+void syntax::registerBuiltinLabels(std::vector<syntaxBlock> &labelList, std::vector<std::unordered_set<std::string>>& declaredLabels, std::unordered_map<std::string, uint32_t>& labelMemoryMap)
 {
+    std::vector<std::pair<std::string, uint32_t>> builtinLabels = {
+        {"ra", 0},
+        {"rb", 1},
+        {"rc", 2},
+        {"rd", 3},
+        {"cmpreg", 4},
+        {"sp", 5},
+        {"bp", 6},
+        {"rf", 7},
+        {"hireg", 8},
+        
+        {"eq", 0},
+        {"ne", 1},
+        {"lt", 2},
+        {"gt", 3},
+        {"le", 4},
+        {"ge", 5},
+    };
     syntaxBlock registerLabel;
-    registerLabel.instruction = "ra";
     registerLabel.isLabel = true;
-    registerLabel.memoryAddress = 0x0;
-    labelList.push_back(registerLabel);
-
-    registerLabel.instruction = "rb";
-    registerLabel.memoryAddress = 0x1;
-    labelList.push_back(registerLabel);
-
-    registerLabel.instruction = "rc";
-    registerLabel.memoryAddress = 0x2;
-    labelList.push_back(registerLabel);
-
-    registerLabel.instruction = "rd";
-    registerLabel.memoryAddress = 0x3;
-    labelList.push_back(registerLabel);
-    
-    registerLabel.instruction = "cmpreg";
-    registerLabel.memoryAddress = 0x4;
-    labelList.push_back(registerLabel);
-    registerLabel.instruction = "sp";
-    registerLabel.memoryAddress = 0x5;
-    labelList.push_back(registerLabel);
-    registerLabel.instruction = "bp";
-    registerLabel.memoryAddress = 0x6;
-    labelList.push_back(registerLabel);
-    registerLabel.instruction = "rf";
-    registerLabel.memoryAddress = 0x7;
-    labelList.push_back(registerLabel);
-    registerLabel.instruction = "eq";
-    registerLabel.memoryAddress = 0x0;
-    labelList.push_back(registerLabel);
-    registerLabel.instruction = "ne";
-    registerLabel.memoryAddress = 0x1;
-    labelList.push_back(registerLabel);
-    registerLabel.instruction = "lt";
-    registerLabel.memoryAddress = 0x2;
-    labelList.push_back(registerLabel);
-    registerLabel.instruction = "gt";
-    registerLabel.memoryAddress = 0x3;
-    labelList.push_back(registerLabel);
-    registerLabel.instruction = "le";
-    registerLabel.memoryAddress = 0x4;
-    labelList.push_back(registerLabel);
-    registerLabel.instruction = "ge";
-    registerLabel.memoryAddress = 0x5;
-    labelList.push_back(registerLabel);
-    registerLabel.instruction = "hireg";
-    registerLabel.memoryAddress = 0x8;
-    labelList.push_back(registerLabel);
+    for (int i=0;i<builtinLabels.size();i++)
+    {
+        registerLabel.instruction = builtinLabels[i].first;
+        registerLabel.memoryAddress = builtinLabels[i].second;
+        labelList.push_back(registerLabel);
+        labelMemoryMap[builtinLabels[i].first] = builtinLabels[i].second;
+        for (int j = 0; j < declaredLabels.size(); j ++)
+        {
+            declaredLabels[j].insert(builtinLabels[i].first);
+        }
+    }
 }
 
 void syntax::toLowerCase(std::string& word)

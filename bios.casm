@@ -1,0 +1,68 @@
+%SECTION TEXT
+%GLOBAL print
+print:
+	clhi
+	pushreg
+	.loop:
+		mov cmpreg eq
+		mov rc 0
+
+		readptr1 rb ra
+		out rb 0
+
+		cmp rb rc
+		mov rc .done
+		jmpif rc
+
+		inc ra
+		jmpimm .loop
+
+	.done:
+		popreg
+		sthi
+		ret
+
+%GLOBAL print_uint32
+print_uint32:
+	clhi
+	pushreg
+	mov rb 10
+	mov rd 0
+	mov cmpreg ne
+	.loop:
+		div ra rb rc # divide ra by rb and store remainder in rc
+		push rc # push the remainder
+
+		mov rc 0   #check to see if ra is zero after operation
+		cmp ra rc
+
+		inc rd
+
+		mov rc .loop
+		jmpif rc
+
+	mov cmpreg ne
+	.print_out:
+		dec rd
+
+		pop ra
+		mov rc 48
+		add ra rc
+		out ra 0
+
+		mov ra 0
+		cmp ra rd
+		mov rc .print_out
+		jmpif rc
+
+	.done:
+		popreg
+		sthi
+		ret
+
+
+%SECTION DATA
+
+%GLOBAL bios_version
+bios_version:
+    string "bios version 1.0" 10 0

@@ -1,0 +1,10 @@
+%SECTION TEXT
+%GLOBAL MOVE_STUFF
+MOVE_STUFF:
+    mov rb 0xdeadbeef
+    mov rc 0xdeadbeef
+    mov rd 0xdeadbeef
+    ret
+
+%SECTION DATA
+    string "extra shit here" 0
